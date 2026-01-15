@@ -12,7 +12,7 @@ const app = express()
 // ===============================
 app.use(cors())
 
-// JSON só para rotas normais
+// JSON só para rotas normais (webhook precisa de RAW)
 app.use((req, res, next) => {
   if (req.originalUrl === '/webhook/stripe') {
     next()
@@ -25,7 +25,9 @@ app.use((req, res, next) => {
 // Stripe
 // ===============================
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: '2023-10-16'
+    })
   : null
 
 // ===============================
@@ -40,7 +42,7 @@ const supabase =
     : null
 
 // ===============================
-// Health check (IMPORTANTE)
+// Health check
 // ===============================
 app.get('/', (req, res) => {
   res.status(200).send('API GameTrade online 🚀')
@@ -63,6 +65,10 @@ app.post('/create-checkout-session', async (req, res) => {
       })
     }
 
+    const FRONTEND_URL =
+      process.env.FRONTEND_URL ||
+      'https://e1745402-34d7-4029-9506-ccbcb7c18b8e.app-preview.com'
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -72,8 +78,8 @@ app.post('/create-checkout-session', async (req, res) => {
           quantity: 1
         }
       ],
-      success_url: `${process.env.FRONTEND_URL}/success`,
-      cancel_url: `${process.env.FRONTEND_URL}/cancel`,
+      success_url: `${FRONTEND_URL}/success`,
+      cancel_url: `${FRONTEND_URL}/cancel`,
       metadata: {
         user_id: userId
       }
@@ -82,7 +88,7 @@ app.post('/create-checkout-session', async (req, res) => {
     res.json({ url: session.url })
   } catch (error) {
     console.error('❌ Erro checkout:', error)
-    res.status(500).json({ error: 'Erro Stripe' })
+    res.status(500).json({ error: 'Erro ao criar sessão Stripe' })
   }
 })
 
@@ -123,6 +129,8 @@ app.post(
             status: 'paid'
           }
         ])
+
+        console.log('✅ Pagamento registrado no Supabase')
       }
 
       res.json({ received: true })
@@ -134,7 +142,7 @@ app.post(
 )
 
 // ===============================
-// Porta (Railway injeta PORT)
+// Porta (Render injeta PORT)
 // ===============================
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
